@@ -1,0 +1,56 @@
+# ViVLM-MoE: Vietnamese Vision-Language Model Configuration
+model:
+  vision_encoder_type: "pretrained"   # "pretrained" (Option 2: SigLIP/CLIP) or "scratch" (Option 1: Custom ViT)
+  pretrained_vision_name: "google/siglip-base-patch16-224"  # Pretrained vision backbone
+  freeze_vision_encoder: true         # Freeze pretrained vision encoder weights
+  d_vision: 512                 # Hidden dimension for Vision Transformer (auto-detected if pretrained)
+  patch_size: 16                # Image patch size (P x P)
+  image_size: 224               # Input image resolution (H, W)
+  num_encoder_layers: 6         # Number of Transformer Encoder blocks in Vision Tower
+  num_heads: 8                  # Number of Attention heads in Vision Tower
+  dropout: 0.1                  # Dropout probability
+  llm_name: "Qwen/Qwen2.5-0.5B-Instruct"  # Pretrained LLM for Vietnamese comprehension
+  llm_hidden_size: 896          # Hidden dimension of Qwen2.5-0.5B
+  freeze_llm: true              # Keep pretrained LLM weights frozen
+
+moe:
+  enabled: false                # Toggle Multimodal MoE Adapter (False for Stage 1, True for Stage 2)
+  num_experts: 4                # Total number of expert MLPs
+  top_k: 2                      # Number of activated experts per token
+  aux_loss_weight: 0.01         # Weight for auxiliary load balancing loss
+
+training:
+  stage: 1                      # 1: Train Base ViVLM (Vision + Projector), 2: Train MoE Adapter
+  batch_size: 8                 # Per-device batch size
+  learning_rate: 1.0e-4         # Learning rate (1e-4)
+  num_epochs: 5                 # Total training epochs
+  warmup_ratio: 0.03            # Linear warmup ratio
+  weight_decay: 0.01            # Weight decay for AdamW
+  max_grad_norm: 1.0            # Gradient clipping threshold
+  gradient_accumulation_steps: 2  # Gradient accumulation steps (effective batch size = 16)
+  fp16: true                    # Mixed precision FP16
+  max_length: 256               # Maximum token sequence length
+  logging_steps: 10             # Logging interval (steps)
+  seed: 42                      # Random seed for reproducibility
+  early_stopping:
+    enabled: true               # Stop training early if validation loss plateaus
+    patience: 3                 # Number of epochs without improvement before stopping
+    min_delta: 0.001            # Minimum change in loss to qualify as an improvement
+    monitor: "val_loss"         # Monitored metric ('val_loss' or 'train_loss')
+
+data:
+  dataset_name: "ThucPD/ViVQA"  # Vietnamese Visual Question Answering dataset on Hugging Face
+  data_dir: "./data"            # Local directory to store dataset on drive D
+  max_samples: null             # Limit samples for quick demo/debugging (null for full dataset)
+  val_max_samples: 200          # Limit validation samples per epoch for rapid evaluation
+  image_size: 224               # Image resolution for preprocessing
+
+paths:
+  cache_dir: "./hf_cache"       # Local Hugging Face cache on drive D (keeps drive C clean)
+  output_dir: "./outputs"       # Directory for evaluation outputs
+  checkpoint_dir: "./checkpoints" # Directory for saved checkpoints
+
+wandb:
+  project: "vivlm-moe"          # Weights & Biases project name
+  entity: null                  # Default W&B entity
+  run_name: null                # Optional custom run name

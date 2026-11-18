@@ -1,91 +1,92 @@
-# Danh Sách Kiểm Tra Thành Phần Xây Dựng VLM Từ Đầu (Component Checklist)
+# Danh Sách Kiểm Tra Thành Phần VLM Kiến Trúc Lai (Hybrid VLM Component Checklist)
 
-Tài liệu này tổng hợp và đối chiếu các thành phần đã có trong dự án hiện tại với toàn bộ các khối cần thiết của một **Vision-Language Model (VLM)** hoàn chỉnh xây dựng từ đầu, kèm theo lộ trình mở rộng **Mixture of Experts (MoE)** trong tương lai.
+Tài liệu này theo dõi và đối chiếu các thành phần trong dự án theo định hướng kiến trúc lai (**Hybrid VLM - LLaVA Style**):
+- **Tự xây dựng từ đầu (From Scratch):** Toàn bộ nhánh Vision Tower (Vision Transformer) và Vision-Language Projector.
+- **Kế thừa từ Pretrained LLM (Pretrained & Frozen):** Tokenizer, Text Token Embedding, LLM Decoder Backbone và LM Head (ví dụ từ `Qwen/Qwen2.5-0.5B` hoặc `meta-llama/Llama-3.2-1B`).
+- **Mở rộng tương lai (Future Extension):** Tích hợp kiến trúc Mixture of Experts (MoE).
 
 > **Quy ước trạng thái:**
-> - `[x]` Đã xây dựng thành phần cơ bản (có thể cần tinh chỉnh khi ghép nối).
-> - `[~]` Đã có một phần / cần tách hoặc điều chỉnh cấu trúc kiến trúc trước khi mở rộng.
+> - `[x]` Đã xây dựng thành phần cơ bản (trong `src/`).
+> - `[~]` Đã có một phần / cần tự rà soát hoặc điều chỉnh cấu trúc trước khi ghép nối.
 > - `[ ]` Chưa xây dựng.
 
 ---
 
-## 1. Tổng Quan Hiện Trạng Dự Án
+## 1. Tổng Quan Hiện Trạng Mã Nguồn Dự Án
 
-Hiện tại dự án đã có 3 module nền tảng trong `src/` và 1 notebook thử nghiệm còn trống (`test.ipynb`):
-- `src/common/visual_encoder.py` (`VisualEncoder`): Thực hiện bước cắt ảnh thành các patch kích thước cố định (`patch_size=16`) qua tích chập 2D và chuyển đổi thành chuỗi patch token `(Batch, Num_Patches, Embed_Dim)`.
-- `src/common/attention.py` (`MultiHeadAttention`): Thực hiện Scaled Dot-Product Multi-Head Attention với cơ chế tách nhiều head, dropout, chiếu đầu ra và tùy chọn Causal Mask dạng tam giác dưới thông qua cờ `is_decoded`.
-- `src/encoderblock.py` (`EncoderBlock`): Kết hợp `VisualEncoder` ở đầu vào với một khối Transformer Encoder theo cấu trúc Pre-Norm (LayerNorm -> Multi-Head Attention -> Residual -> LayerNorm -> MLP/GELU -> Residual).
-- `test.ipynb`: Chưa có nội dung kiểm thử (0 bytes).
-
----
-
-## 2. Danh Sách Kiểm Tra Thành Phần Chi Tiết
-
-### A. Vision Tower (Bộ Mã Hóa Hình Ảnh)
-- [x] **Patch Embedding** (`src/common/visual_encoder.py` - `VisualEncoder`): Cắt ảnh 2D thành chuỗi các vector đặc trưng của từng patch.
-- [x] **Bidirectional Multi-Head Self-Attention** (`src/common/attention.py` - `MultiHeadAttention` với `is_decoded=False`): Cho phép các patch ảnh tương tác thông tin hai chiều với nhau.
-- [~] **Transformer Encoder Block** (`src/encoderblock.py` - `EncoderBlock`): Đã có đầy đủ cấu trúc Pre-Norm, Attention, FFN (GELU) và Residual Connection.
-  - *Điểm cần tự rà soát về kiến trúc:* Hiện tại lớp cắt patch (`VisualEncoder`) đang nằm bên trong `EncoderBlock`. Theo thiết kế chuẩn, cắt patch chỉ thực hiện **1 lần** ở đầu vào, còn khối Encoder Block chỉ nhận chuỗi token để có thể xếp chồng nhiều tầng (`N` layers) liên tiếp.
-  - *Điểm cần tự rà soát về tham số & shape:* Tham số `block_size` mặc định ở `EncoderBlock` hiện là `16`, cần đảm bảo khớp với tổng số patch thực tế của ảnh đầu vào (ví dụ ảnh 224×224 với patch 16×16 sinh ra 196 patch). Ngoài ra, nên kiểm tra lại nhánh xử lý trường hợp ảnh đầu vào thiếu chiều Batch (tensor 3D).
-- [ ] **Positional Embedding cho ảnh**: Vector mã hóa vị trí không gian (1D hoặc 2D) cộng vào chuỗi patch tokens để mô hình phân biệt vị trí các mảnh ảnh.
-- [ ] **`[CLS]` Token (Tùy chọn theo chuẩn ViT)**: Token đặc biệt đại diện toàn bộ bức ảnh (nếu kiến trúc cần gom thông tin toàn cục hoặc dùng trong giai đoạn pretrain tương phản).
-- [ ] **Vision Encoder hoàn chỉnh (Backbone)**: Module tổng hợp theo luồng `Patch Embedding -> (+ CLS) -> (+ Positional Embedding) -> N × Encoder Block -> Final LayerNorm`.
+- `src/common/visual_encoder.py` (`VisualEncoder`): Thực hiện phép chiếu tích chập 2D (`kernel_size=16`, `stride=16`) để cắt ảnh thành các patch và làm phẳng thành chuỗi vector `(Batch, Num_Patches, d_vision)`.
+- `src/common/attention.py` (`MultiHeadAttention`): Cài đặt Scaled Dot-Product Multi-Head Attention, có hỗ trợ bật/tắt Causal Mask qua cờ `is_decoded`.
+- `src/encoderblock.py` (`EncoderBlock`): Cài đặt cấu trúc Transformer Encoder (Pre-Norm, Multi-Head Attention, Residual, MLP/GELU, Residual), hiện đang chứa trực tiếp `VisualEncoder` ở đầu block.
+- `test.ipynb`: Sổ tay thử nghiệm (hiện đang trống).
 
 ---
 
-### B. Vision-Language Connector (Cầu Nối Đa Phương Thức)
-- [ ] **Multimodal Projector**: Khối ánh xạ chiều đặc trưng từ không gian Vision (`d_vision`) sang không gian ngôn ngữ (`d_llm`), thường là Linear đơn hoặc MLP nhiều lớp kèm hàm kích hoạt phi tuyến.
-- [ ] **Cơ chế nén Visual Tokens (Tùy chọn nâng cao)**: Spatial Pooling, Pixel Shuffle hoặc Perceiver Resampler / Q-Former để giảm số lượng token ảnh khi làm việc với ảnh độ phân giải cao.
+## 2. Phân Nhóm Kiểm Tra Chi Tiết Theo Kiến Trúc Mới
+
+### Nhóm 1: Nhánh Thị Giác — Vision Tower (Tự Xây Dựng Từ Đầu)
+- [x] **Patch Embedding** (`src/common/visual_encoder.py` - `VisualEncoder`): Chia ảnh thành chuỗi patch tokens kích thước $d_{\text{vision}}$.
+- [x] **Bidirectional Multi-Head Self-Attention** (`src/common/attention.py` - `MultiHeadAttention` với `is_decoded=False`): Cho phép các patch ảnh tương tác ngữ cảnh hai chiều.
+- [~] **Transformer Encoder Block** (`src/encoderblock.py` - `EncoderBlock`): Đã có đủ Pre-Norm, Attention, MLP (GELU) và Residual.
+  - *Điểm kiến trúc cần rà soát:* Tách lớp cắt patch (`VisualEncoder`) ra khỏi thân `EncoderBlock` để Patch Embedding chỉ chạy 1 lần ở đầu vào, cho phép xếp chồng $N$ tầng Encoder Block liên tiếp.
+  - *Điểm tham số cần rà soát:* Đồng bộ `block_size` với tổng số patch ảnh thực tế ($N_p = \frac{H}{P} \times \frac{W}{P}$).
+- [ ] **Positional Embedding cho ảnh**: Vector mã hóa vị trí không gian (1D hoặc 2D) cộng vào chuỗi patch tokens để mô hình nhận biết tọa độ các mảnh ảnh.
+- [ ] **Vision Encoder hoàn chỉnh (Backbone)**: Đóng gói toàn bộ luồng `Patch Embedding -> (+ Positional Embedding) -> N × Encoder Block -> Final LayerNorm`.
 
 ---
 
-### C. Text Processing & Embedding (Xử Lý Văn Bản)
-- [ ] **Tokenizer & Vocabulary**: Bộ tách từ (BPE / WordPiece / SentencePiece hoặc tự định nghĩa bảng từ vựng cho bài toán thử nghiệm) ánh xạ văn bản thành chuỗi chỉ số nguyên (`token_ids`).
-- [ ] **Special Multimodal Tokens**: Các token đặc biệt như token bắt đầu câu, kết thúc câu, đệm (padding), và token đánh dấu vị trí ảnh (ví dụ `<image>`).
-- [ ] **Text Token Embedding**: Bảng tra cứu chuyển `token_ids` thành các vector trong không gian `d_llm`.
-- [ ] **Positional Encoding cho chuỗi văn bản**: Mã hóa thứ tự từ trong câu (Absolute Positional Embedding hoặc Rotary Position Embedding - RoPE).
+### Nhóm 2: Cầu Nối Đa Phương Thức — Multimodal Projector (Tự Xây Dựng Từ Đầu)
+- [ ] **Multimodal Projector (Linear hoặc 2-layer MLP)**:
+  - Khối ánh xạ chiều vector từ không gian thị giác sang không gian ngôn ngữ: $d_{\text{vision}} \to d_{\text{llm}}$ (với $d_{\text{llm}}$ là chiều ẩn của Pretrained LLM bạn chọn, ví dụ 896 cho Qwen2.5-0.5B).
+  - Cấu trúc 2 tầng Linear xen kẽ hàm kích hoạt phi tuyến (GELU/SiLU) để tăng khả năng biểu đạt căn chỉnh ngữ nghĩa.
+- [ ] **(Tùy chọn nâng cao) Token Pooling / Compression**: Cơ chế nén số lượng patch token (nếu dùng ảnh độ phân giải cao).
 
 ---
 
-### D. Language Model / Multimodal Decoder (Bộ Giải Mã Ngôn Ngữ)
-- [x] **Causal Masked Self-Attention** (`src/common/attention.py` - `MultiHeadAttention` với `is_decoded=True`): Đã có cơ chế mặt nạ tam giác dưới ngăn token phía trước nhìn thấy token tương lai.
-- [ ] **Transformer Decoder Block**: Khối giải mã gồm `Pre-Norm -> Causal Self-Attention -> Residual -> Pre-Norm -> FFN/MLP -> Residual` (có thể bổ sung Cross-Attention nếu đi theo hướng Encoder-Decoder thay vì Decoder-only).
-- [ ] **LLM Backbone**: Chuỗi xếp chồng `M` khối Decoder Block và lớp chuẩn hóa cuối (Final Normalization).
-- [ ] **LM Head**: Tầng chiếu tuyến tính từ chiều ẩn `d_llm` về kích thước bảng từ vựng `vocab_size` để dự đoán xác suất token tiếp theo.
+### Nhóm 3: Nhánh Văn Bản & Mô Hình Ngôn Ngữ (Kế Thừa Pretrained LLM)
+*Nhờ việc sử dụng Pretrained LLM, bạn **không** cần phải tự huấn luyện BPE Tokenizer hay tự pretrain một LLM từ đầu.*
+
+- [ ] **Pretrained Tokenizer (Kế thừa)**: Tải và sử dụng Tokenizer đi kèm với LLM mục tiêu (ví dụ từ Hugging Face: Qwen hoặc Llama) để biến câu hỏi thành danh sách `input_ids`.
+- [ ] **Special Tokens**: Đăng ký hoặc sử dụng token đặc biệt đại diện cho vị trí hình ảnh (ví dụ `<image>`).
+- [ ] **Pretrained Text Embedding Layer (Kế thừa)**: Tận dụng tầng nhúng từ của LLM để chuyển `input_ids` thành vector biểu diễn $(B, N_t, d_{\text{llm}})$.
+- [ ] **Pretrained LLM Decoder Backbone (Kế thừa & Đóng băng)**:
+  - Sử dụng toàn bộ khối Decoder có sẵn của mô hình ngôn ngữ mục tiêu.
+  - Đóng băng toàn bộ trọng số (không tính gradient) trong giai đoạn huấn luyện đầu để bảo toàn ngữ pháp và tri thức ngôn ngữ tự nhiên.
+- [ ] **Pretrained LM Head (Kế thừa)**: Tầng chiếu cuối cùng từ $d_{\text{llm}}$ sang kích thước từ vựng `vocab_size` để sinh logits dự đoán token tiếp theo.
 
 ---
 
-### E. Kiến Trúc VLM Tổng Thể & Suy Luận (Full VLM & Inference)
-- [ ] **Multimodal Sequence Fusion**: Cơ chế hợp nhất chuỗi Visual Tokens (sau Projector) và Text Tokens (sau Embedding) thành một chuỗi thống nhất đưa vào Decoder.
-- [ ] **Combined Attention Mask**: Quản lý mặt nạ kết hợp giữa padding mask và causal mask (hoặc cho phép các visual token nhìn thấy nhau hai chiều trong chuỗi tiền tố - Prefix LM, tùy lựa chọn thiết kế).
-- [ ] **Autoregressive Generation Loop**: Quy trình sinh từng token nối tiếp nhau tại thời điểm suy luận (Greedy Decoding, Temperature, Top-K, Top-P Sampling) và điều kiện dừng khi gặp token kết thúc.
-- [ ] **KV Cache (Tùy chọn tối ưu)**: Bộ nhớ đệm Key/Value của các token trước đó nhằm tăng tốc độ sinh văn bản.
+### Nhóm 4: Hợp Nhất Đa Phương Thức & Vòng Lặp Suy Luận (Tự Lắp Ráp)
+- [ ] **Multimodal Sequence Fusion**:
+  - Cơ chế ghép chuỗi đặc trưng ảnh sau Projector $(B, N_p, d_{\text{llm}})$ và chuỗi nhúng văn bản $(B, N_t, d_{\text{llm}})$ thành chuỗi tensor duy nhất $(B, N_p + N_t, d_{\text{llm}})$.
+  - Truyền trực tiếp tensor chuỗi hợp nhất vào Pretrained LLM qua tham số nhận vector nhúng (`inputs_embeds`).
+- [ ] **Attention Mask & Causal Generation**: Đảm bảo cấu hình Attention Mask hợp lệ cho chuỗi đa phương thức.
+- [ ] **Autoregressive Generation Loop**:
+  - Giai đoạn nạp ngữ cảnh (Prefill) với chuỗi ảnh + câu hỏi.
+  - Vòng lặp sinh từng từ tiếp theo (Decode loop) với các chiến lược: Greedy, Temperature Scaling, Top-K, Top-P Sampling cho đến khi gặp token kết thúc câu (`<eos>`).
 
 ---
 
-### F. Dữ Liệu, Huấn Luyện & Kiểm Thử (Data, Training & Evaluation)
-- [ ] **Image Preprocessing Pipeline**: Chuẩn hóa kích thước ảnh mục tiêu, đưa giá trị pixel về miền chuẩn (Mean/Std Normalization) phù hợp với `patch_size`.
-- [ ] **Multimodal Dataset & Collate Function**: Quản lý cặp dữ liệu (Ảnh, Câu hỏi/Mô tả, Câu trả lời), tự động padding và tạo batch.
-- [ ] **Target Labels & Loss Masking**: Cơ chế đánh dấu bỏ qua (ignore index) đối với các vị trí visual tokens, câu hỏi đầu vào (prompt) và token padding để chỉ tính hàm mất mát trên phần văn bản mô hình cần sinh.
-- [ ] **Loss Function**: Hàm mất mát dự đoán token tiếp theo (Cross-Entropy Loss theo cơ chế dịch trái 1 bước giữa dự đoán và nhãn).
-- [ ] **Training Pipeline**: Vòng lặp huấn luyện, Optimizer, Learning Rate Scheduler (Warmup + Decay), Gradient Clipping, và quản lý thiết bị (CPU/GPU).
-- [ ] **Chiến lược huấn luyện nhiều giai đoạn**:
-  - Giai đoạn 1 (Feature Alignment): Đóng băng Vision Encoder và LLM, chỉ huấn luyện Projector.
-  - Giai đoạn 2 (Instruction Tuning): Mở khóa toàn bộ hoặc một phần LLM cùng Projector để huấn luyện hội thoại / trả lời câu hỏi.
-- [ ] **Checkpointing & Validation**: Lưu/tải trọng số mô hình, theo dõi loss/metric trên tập kiểm định và chạy thử nghiệm kiểm tra kích thước tensor trên `test.ipynb`.
+### Nhóm 5: Dữ Liệu & Chiến Lược Huấn Luyện (Training Pipeline)
+- [ ] **Image Preprocessing**: Resize ảnh về kích thước cố định chia hết cho `patch_size`, chuẩn hóa Mean/Std.
+- [ ] **Multimodal Dataset & Collate**: Quản lý cặp dữ liệu (Ảnh, Prompt, Câu trả lời), tự động tạo batch và padding.
+- [ ] **Loss Masking**: Cơ chế đánh dấu bỏ qua (ignore index) không tính Cross-Entropy loss trên phần Visual Tokens, phần câu hỏi (prompt) và các vị trí padding; chỉ tính loss trên các token của câu trả lời.
+- [ ] **Chiến lược Huấn luyện 2 bước**:
+  - *Bước 1 (Feature Alignment):* Đóng băng hoàn toàn Pretrained LLM và Vision Encoder, **chỉ huấn luyện duy nhất Multimodal Projector** trên tập cặp ảnh-mô tả (Captioning).
+  - *Bước 2 (Visual Instruction Tuning - Tùy chọn):* Mở khóa thêm Vision Encoder (hoặc dùng LoRA cho LLM) để tinh chỉnh trên tập dữ liệu hỏi đáp đa phương thức (VQA).
+- [ ] **Kiểm thử trên notebook**: Viết kịch bản kiểm tra kích thước các tensor (shape verification) tại [test.ipynb](file:///d:/Huy/AI_VIETNAM/VLM_from_scratch/test.ipynb).
 
 ---
 
 ## 3. Lộ Trình Mở Rộng Tương Lai: Tích Hợp Mixture of Experts (MoE)
 
-Khi mô hình VLM cơ bản (Dense Model) đã chạy thông suốt từ đầu đến cuối, các thành phần sau sẽ được thêm để chuyển đổi sang kiến trúc **Sparse MoE VLM**:
+Khi mô hình VLM cơ bản đã chạy thông suốt từ đầu đến cuối, việc tích hợp MoE có thể thực hiện theo 2 hướng:
 
-- [ ] **Router / Gating Network**: Mạng tuyến tính đánh giá từng token (ảnh hoặc chữ) và gán trọng số xác suất tới từng Expert trong tổng số `N` Experts.
-- [ ] **Top-K Selection Mechanism**: Cơ chế chỉ kích hoạt `K` Experts có điểm số cao nhất trên mỗi token (ví dụ Top-1 hoặc Top-2) nhằm giữ chi phí tính toán thấp khi tăng tổng tham số.
-- [ ] **Expert Pool (Tập hợp Experts)**: Nhiều khối FFN/MLP độc lập hoạt động song song bên trong tầng MoE thay cho một khối FFN duy nhất của Transformer Block.
-- [ ] **Weighted Output Aggregation**: Tổng hợp có trọng số kết quả từ `K` Experts được chọn để tạo đầu ra của tầng MoE.
-- [ ] **Auxiliary Load Balancing Loss**: Hàm mất mát phụ trợ giúp phân bổ token đồng đều giữa các Experts, tránh hiện tượng sụp đổ định tuyến (Router Collapse).
-- [ ] **Tùy chọn nâng cao cho Multimodal MoE**:
-  - *Shared Experts*: Một hoặc vài Expert luôn được kích hoạt cho mọi token nhằm học kiến thức nền chung.
-  - *Modality-Aware Routing*: Cơ chế giúp Router chuyên biệt hóa một số Expert cho token thị giác và một số Expert cho token ngôn ngữ (hoặc tự nhiên để mô hình tự học phân tách).
+### Hướng A: Tự xây dựng tầng MoE cho Vision Encoder (Vision-MoE)
+- [ ] **Router / Gating Network**: Mạng tuyến tính chấm điểm phân bổ cho từng patch token ảnh tới $E$ chuyên gia.
+- [ ] **Top-K Routing**: Chỉ kích hoạt $K$ chuyên gia cho mỗi patch token ($K \ll E$).
+- [ ] **Expert FFNs**: Tập hợp các khối MLP độc lập thay thế cho Dense MLP trong `EncoderBlock`.
+- [ ] **Weighted Sum Output**: Tổng hợp đầu ra có trọng số từ các chuyên gia được chọn.
+- [ ] **Auxiliary Load Balancing Loss**: Hàm mất mát phụ giúp phân bổ patch đồng đều giữa các chuyên gia.
 
+### Hướng B: Nâng cấp phần Pretrained LLM sang Pretrained MoE Model
+- [ ] Thay thế Decoder Dense (ví dụ Qwen2.5-Dense) bằng một Pretrained MoE nhỏ gọn (như `Qwen1.5-MoE-A2.7B` hoặc các biến thể MoE mã nguồn mở tương thích), vẫn giữ nguyên quy trình kết nối với Vision Encoder và Projector tự viết.

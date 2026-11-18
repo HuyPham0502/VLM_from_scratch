@@ -1,1 +1,68 @@
-*/__pycache__
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*/__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Environment variables & API keys (STRICT CONFIDENTIAL)
+.env
+.env.*
+*.key
+*.pem
+*.secret
+credentials.json
+client_secret*.json
+
+# Local Data and Caches (Large datasets & Pretrained weights)
+data/
+hf_cache/
+cache/
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.ckpt
+*.onnx
+*.h5
+
+# Weights & Biases and Logging
+wandb/
+logs/
+outputs/
+*.log
+
+# Checkpoints and Training Outputs
+checkpoints/
+
+# Jupyter Notebooks & checkpoints
+.ipynb_checkpoints/
+*.ipynb
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Packaging & Distribution
+build/
+dist/
+*.egg-info/
+
+# IDE & Editor Configurations
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+.DS_Store

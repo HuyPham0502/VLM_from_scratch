@@ -2,8 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .common.attention import MultiHeadAttention
-from .common.visual_encoder import VisualEncoder
+from common import MultiHeadAttention, VisualEncoder, MLP
 
 class EncoderBlock(nn.Module):
     def __init__(self, in_channels, out_channels, n_heads, block_size=16, dropout=0.1):
@@ -19,23 +18,25 @@ class EncoderBlock(nn.Module):
             block_size=block_size
         )
         self.post_norm = nn.LayerNorm(out_channels)
-
-        self.mlp = nn.Sequential(
-            nn.Linear(out_channels, 4 * out_channels),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(4 * out_channels, out_channels),
-            nn.Dropout(dropout)
-    )
+        self.mlp = MLP(out_channels, out_channels, dropout)
 
     def forward(self, x: torch.Tensor):
-        out = self.encoder(x)  # -> (B, num_patches, d_model)
+        out = self.encoder(x)  # -> (B, num_patches**2, d_model)
         residual = out
         out = self.pre_norm(out)
-        attn = self.mha(out)  # -> (B, num_patches, d_model)
+        attn = self.mha(out)  # -> (B, num_patches**2, d_model)
         attn = attn + residual
         residual = attn
         out = self.post_norm(attn)
-        mlp = self.mlp(out)     
+        mlp = self.mlp(out)     # -> (B, num_patches**2, d_model)
         out = mlp + residual
         return out 
+
+if __name__=="__main__":
+    B, H, W, C = 32, 224, 224, 3
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+
+    x = torch.rand(B, C, H, W).to(device)
+    encoder = EncoderBlock(C, 8, 4).to(device)
+    out = encoder(x)
+    print("Shape of output:", out.shape)
